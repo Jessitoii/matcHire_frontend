@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { log } from 'console'
 
 export default function RegisterPage() {
   const [firstName, setFirstName] = useState('')
@@ -10,6 +9,8 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<"seeker" | "employer">("seeker")
+  const [companyName, setCompanyName] = useState('')
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
@@ -20,67 +21,180 @@ export default function RegisterPage() {
     setError(null)
 
     try {
+      const payload: any = {
+        firstName,
+        lastName,
+        email,
+        password,
+        role
+      }
+
+      // employer ise companyName'i ekle
+      if (role === "employer") {
+        payload.companyName = companyName
+      }
+
       const res = await fetch('http://localhost:5000/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, firstName, lastName, role})
+        body: JSON.stringify(payload)
       })
-      console.log(res);
-      
+
       if (!res.ok) {
         const text = await res.text()
         throw new Error(text || 'Registration failed')
       }
 
-      // after successful registration, redirect to login
       router.replace('/login')
     } catch (err: any) {
       setError(err.message || 'Unknown error')
-      console.log("error : ", err);
-      
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="max-w-md mx-auto mt-16 bg-white p-8 rounded-lg shadow">
-      <h2 className="text-2xl font-semibold mb-4">Register</h2>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium">First Name</label>
-          <input value={firstName} onChange={e => setFirstName(e.target.value)} className="mt-1 block w-full rounded-md border-gray-200 shadow-sm" type="text" required />
-        </div>
-        <div>
-          <label className="block text-sm font-medium">Last Name</label>
-          <input value={lastName} onChange={e => setLastName(e.target.value)} className="mt-1 block w-full rounded-md border-gray-200 shadow-sm" type="text" required />
-        </div>
-        <div>
-        <div>
-            <label className="block text-sm font-medium">Role</label>
-            <select value={role} onChange={e => setRole(e.target.value as "seeker" | "employer")} className="mt-1 block w-full rounded-md border-gray-200 shadow-sm" required>
-              <option value="seeker">Job Seeker</option>
-              <option value="employer">Employer</option>
-            </select>
-        </div>
+    <div className="min-h-screen bg-white/90 flex items-center justify-center px-4">
+      <div className="w-full max-w-md">
+        <div className="bg-white/90 backdrop-blur-xl border border-slate-100 shadow-xl rounded-2xl p-8">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+              <svg
+                className="h-6 w-6 text-indigo-600"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 19a8 8 0 0116 0"
+                />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-2xl font-semibold text-slate-900">Create account</h2>
+              <p className="text-sm text-slate-500">
+                Join Matchire and make job matching easy.
+              </p>
+            </div>
+          </div>
 
-          <label className="block text-sm font-medium">Email</label>
-          <input value={email} onChange={e => setEmail(e.target.value)} className="mt-1 block w-full rounded-md border-gray-200 shadow-sm" type="email" required />
-        </div>
-        <div>
-          <label className="block text-sm font-medium">Password</label>
-          <input value={password} onChange={e => setPassword(e.target.value)} className="mt-1 block w-full rounded-md border-gray-200 shadow-sm" type="password" required />
-        </div>
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+                  First Name
+                </label>
+                <input
+                  value={firstName}
+                  onChange={e => setFirstName(e.target.value)}
+                  className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  type="text"
+                  required
+                />
+              </div>
 
-        {error && <div className="text-sm text-red-600">{error}</div>}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+                  Last Name
+                </label>
+                <input
+                  value={lastName}
+                  onChange={e => setLastName(e.target.value)}
+                  className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  type="text"
+                  required
+                />
+              </div>
+            </div>
 
-        <div className="flex items-center justify-between">
-          <button className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700" disabled={loading}>
-            {loading ? 'Creating...' : 'Create account'}
-          </button>
-          <a className="text-sm text-indigo-600 hover:underline" href="/login">Back to login</a>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+                Role
+              </label>
+              <select
+                value={role}
+                onChange={e => setRole(e.target.value as "seeker" | "employer")}
+                className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                required
+              >
+                <option value="seeker">Job Seeker</option>
+                <option value="employer">Employer</option>
+              </select>
+            </div>
+
+            {role === "employer" && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+                  Company Name
+                </label>
+                <input
+                  value={companyName}
+                  onChange={e => setCompanyName(e.target.value)}
+                  className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  type="text"
+                  required
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+                Email
+              </label>
+              <input
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                type="email"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+                Password
+              </label>
+              <input
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                type="password"
+                required
+              />
+            </div>
+
+            {error && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded-lg">
+                {error}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2">
+              <button
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-indigo-500 shadow-md hover:shadow-lg hover:from-indigo-500 hover:to-indigo-500 transition disabled:opacity-60"
+                disabled={loading}
+              >
+                {loading ? 'Creating...' : 'Create account'}
+              </button>
+
+              <a
+                className="text-sm text-indigo-600 hover:text-indigo-700 hover:underline"
+                href="/login"
+              >
+                Already have an account?
+              </a>
+            </div>
+          </form>
         </div>
-      </form>
+      </div>
     </div>
   )
 }

@@ -3,12 +3,15 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import LoadingSpinner from '../../components/LoadingSpinner'
+import Navbar from '../../components/Navbar'
+import Footer from '../../components/Footer'
 
 type Job = {
   id: string
   title: string
   description: string
   CVs?: Array<any>
+  missingKeywords?: string[]
 }
 
 // Skor için dairesel badge
@@ -65,11 +68,47 @@ export default function DashboardPage() {
   const [creatingJob, setCreatingJob] = useState(false)
   const [newJobTitle, setNewJobTitle] = useState('')
   const [newJobDescription, setNewJobDescription] = useState('')
+  const [role, setRole] = useState<string | null>(null)   // 👈 YENİ STATE
+  const [missingKeywords, setMissingKeywords] = useState<string[]>([]);
 
-  useEffect(() => {
-    const token = localStorage.getItem('token')
-    if (!token) router.replace('/login')
-  }, [router])
+// 1) Profil yükleme
+useEffect(() => {
+  if (typeof window === "undefined") return; // SSR fix
+
+  const token = window.localStorage.getItem("token");
+  if (!token) {
+    router.replace("/login");
+    return;
+  }
+
+  async function loadProfile() {
+    try {
+      const res = await fetch("http://localhost:5000/api/auth/profile", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        router.replace("/login");
+        return;
+      }
+
+      const data = await res.json();
+      setRole(data.user.role);
+    } catch (err) {
+      router.replace("/login");
+    }
+  }
+
+  loadProfile();
+}, [router]);
+
+// 2) Role geldikten sonra jobs çek
+useEffect(() => {
+  if (!role) return;
+  fetchJobs();
+}, [role]);
 
   async function handleSubmit() {
     setLoading(true)
@@ -151,12 +190,37 @@ export default function DashboardPage() {
 
       const newList = await fetchJobs() // Taze listeyi al
       await loadSelectedJobDetails(selectedJobId!, newList) // Taze listeyi kullanarak detayı yükle
+      const updatedJob = newList.find(j => j.id === selectedJobId);
+      setMissingKeywords(updatedJob?.missingKeywords || []);
       setResults(allResults.map((r: any) => ({ name: r.name, score: r.score, ...(r.error ? { error: r.error } : {}) })))
     } catch (err: any) {
       console.error(err)
       setResults([{ error: err.message || String(err) }])
     } finally {
       setLoading(false)
+    }
+    // Eğer iş arayan ise eksik kelimeleri de çek
+    if (role === "seeker") {
+      const cvList = selectedJob?.CVs;
+      if (cvList && cvList.length > 0) {
+        const firstCv = cvList[0];
+
+        // 1) Missing keywords’i backend’e kaydet
+        const missing = await fetchMissingKeywords(
+          firstCv.id,
+          selectedJob!.id,
+          selectedJob!.description
+        );
+
+        // 2) Frontend state’e yaz
+        setMissingKeywords(missing);
+
+        // 3) Backend artık güncel → yeni jobs listesini çek
+        const refreshedJobs = await fetchJobs();
+
+        // 4) Bu güncel listeyle selected job detaylarını yeniden yükle
+        await loadSelectedJobDetails(selectedJob!.id, refreshedJobs);
+      }
     }
   }
 
@@ -179,8 +243,6 @@ export default function DashboardPage() {
     }
   }
 
-  useEffect(() => { fetchJobs() }, [])
-
   // Load selected job details (CVs and similarity scores)
   async function loadSelectedJobDetails(jobId: string, jobsList?: Job[]) {
     try {
@@ -202,9 +264,11 @@ export default function DashboardPage() {
         id: jobId,
         title: basic?.title || ((cvData && (cvData as any).jobTitle) || ''),
         description: basic?.description || ((cvData && (cvData as any).jobDescription) || ''),
-        CVs: cvsList
+        CVs: cvsList,
+        missingKeywords: basic?.missingKeywords || []
       }
       setSelectedJob(merged)
+      setMissingKeywords(merged.missingKeywords || []);
     } catch (err) {
       console.error('Failed to load selected job details', err)
       setSelectedJob(null)
@@ -317,198 +381,273 @@ export default function DashboardPage() {
     }
   }
 
+  async function fetchMissingKeywords(cvId: string, jobId: string, jobText: string) {
+    try {
+      const token = localStorage.getItem("token");
+
+      const res = await fetch("http://localhost:5000/api/keywords/missing", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          cvId,
+          jobId,
+          jobText
+        })
+      });
+
+      const data = await res.json();
+      return data.missingKeywords || [];
+
+    } catch (err) {
+      console.error("Missing keywords error:", err);
+      return [];
+    }
+  }
+
   return (
     <div>
-      <header className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <div>
-          <button
-            className="mr-2 px-3 py-1 bg-gray-200 rounded"
-            onClick={() => { localStorage.removeItem('token'); router.replace('/login') }}
-          >
-            Log out
-          </button>
+      <div className="min-h-screen bg-white/90">
+        <div className="w-full fixed top-0 left-0 z-50">
+          <Navbar />
         </div>
-      </header>
 
-      {/* Üst grid: create job + selected job + sağda jobs list */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Main column: create job + selected job details and CV upload */}
-        <div className="md:col-span-2 bg-white p-4 rounded shadow space-y-6">
-          <div>
-            <h2 className="text-xl font-semibold mb-2">Create a new job</h2>
-            <input
-              placeholder="Job title"
-              value={newJobTitle}
-              onChange={e => setNewJobTitle(e.target.value)}
-              className="w-full rounded border-gray-200 border p-2 mb-2"
-            />
-            <textarea
-              placeholder="Job description"
-              value={newJobDescription}
-              onChange={e => setNewJobDescription(e.target.value)}
-              className="w-full rounded border-gray-200 border p-2 mb-2"
-            />
-            <div className="flex items-center gap-2">
-              <button
-                onClick={createJob}
-                disabled={creatingJob}
-                className="px-4 py-2 bg-indigo-600 text-white rounded"
-              >
-                {creatingJob ? 'Creating...' : 'Create job'}
-              </button>
-              <button
-                onClick={fetchJobs}
-                className="px-3 py-2 bg-gray-100 rounded"
-              >
-                Refresh jobs
-              </button>
-            </div>
-          </div>
+        <div className="pt-[80px] px-4 md:px-8 pb-10 max-w-7xl mx-auto">
+          {/* Üst grid: create job + selected job + sağda jobs list */}
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Main column */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Create job card */}
+              <div className="bg-white/90 backdrop-blur border border-slate-100 p-5 md:p-6 rounded-2xl shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-xl font-semibold text-slate-900">Create a new job</h2>
+                    <p className="text-sm text-slate-500">
+                      Enter the job title and description, then upload and match CVs.
+                    </p>
+                  </div>
+                </div>
 
-          <div>
-            <h2 className="text-xl font-semibold mb-2">Selected job</h2>
-            {!selectedJobId ? (
-              <div className="text-sm text-slate-600">
-                No job selected. Choose a job from the list to upload CVs.
+                <input
+                  placeholder="Job title"
+                  value={newJobTitle}
+                  onChange={e => setNewJobTitle(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm mb-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+                <textarea
+                  placeholder="Job description"
+                  value={newJobDescription}
+                  onChange={e => setNewJobDescription(e.target.value)}
+                  rows={5}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm mb-4 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={createJob}
+                    disabled={creatingJob}
+                    className="inline-flex items-center justify-center px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-500 text-sm font-medium text-white rounded-xl shadow-sm hover:shadow-md hover:from-indigo-500 hover:to-indigo-500 transition disabled:opacity-60"
+                  >
+                    {creatingJob ? 'Creating...' : 'Create job'}
+                  </button>
+                </div>
               </div>
-            ) : (
-              (() => {
-                const selected = selectedJob || jobs.find(j => j.id === selectedJobId)
-                if (!selected) return <div className="text-sm text-red-600">Selected job not found</div>
-                return (
-                  <div className="space-y-4">
-                    <div className="p-3 border rounded bg-gray-50">
-                      <div className="font-medium">{selected.title}</div>
-                      <div className="text-sm text-slate-600">{selected.description}</div>
-                    </div>
 
-                    <div className="flex items-center gap-2">
-                      <div>
-                        <label className="block text-sm font-medium">Upload CVs for this job</label>
-                        <input
-                          type="file"
-                          accept="application/pdf,.pdf"
-                          multiple
-                          onChange={e => uploadCvsForJob(e.target.files, selectedJobId!)}
-                          className="mt-2"
-                        />
-                        {loading && (
-                          <div className="mt-2">
-                            <LoadingSpinner />
+              {/* Selected job */}
+              <div className="bg-white/90 backdrop-blur border border-slate-100 p-5 md:p-6 rounded-2xl shadow-sm">
+                <h2 className="text-xl font-semibold mb-3 text-slate-900">Selected job</h2>
+                {!selectedJobId ? (
+                  <div className="text-sm text-slate-500 flex items-center gap-2">
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-400 text-xs">
+                      i
+                    </span>
+                    No job selected. Choose a job from the list to upload CVs.
+                  </div>
+                ) : (
+                  (() => {
+                    const selected = selectedJob
+                    if (!selected) return <div className="text-sm text-red-600">Selected job not found</div>
+                    return (
+                      <div className="space-y-4">
+                        <div className="p-3 border border-slate-100 rounded-xl bg-slate-50/80">
+                          <div className="font-medium text-slate-900">{selected.title}</div>
+                          <div className="text-sm text-slate-600 mt-1 whitespace-pre-line max-h-40 overflow-y-auto">
+                            {selected.description}
                           </div>
-                        )}
+                        </div>
+
+                        <div className="flex flex-col md:flex-row md:items-center gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700">
+                              Upload CVs for this job
+                            </label>
+                            <input
+                              type="file"
+                              accept="application/pdf,.pdf"
+                              multiple
+                              onChange={e => uploadCvsForJob(e.target.files, selectedJobId!)}
+                              className="mt-2 text-sm"
+                            />
+                            {loading && (
+                              <div className="mt-2">
+                                <LoadingSpinner />
+                              </div>
+                            )}
+                          </div>
+                          <div className="md:ml-auto">
+                            <button
+                              onClick={handleSubmit}
+                              className="px-4 py-2.5 bg-emerald-600 text-sm font-medium text-white rounded-xl shadow-sm hover:bg-emerald-500 transition cursor-pointer"
+                            >
+                              Calculate similarity
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="ml-auto">
+                    )
+                  })()
+                )}
+              </div>
+            </div>
+
+            {/* Right column: jobs list */}
+            <div className="bg-white/90 backdrop-blur border border-slate-100 p-4 md:p-5 rounded-2xl shadow-sm self-start max-h-[650px] overflow-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold text-slate-900">Your jobs</h2>
+                {jobs.length > 0 && (
+                  <span className="text-xs text-slate-500">
+                    {jobs.length} job{jobs.length > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+              <ul className="space-y-2">
+                {jobs.map(job => (
+                  <li
+                    key={job.id}
+                    className={`p-3 rounded-xl border text-sm transition shadow-sm hover:shadow-md hover:-translate-y-[1px] cursor-pointer ${
+                      selectedJobId === job.id
+                        ? 'bg-indigo-50 border-indigo-200'
+                        : 'bg-slate-50 border-slate-100 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex flex-col gap-2">
+                      <div className="w-full">
+                        <div className="font-medium text-slate-900">{job.title}</div>
+                        <div className="text-xs text-slate-600 line-clamp-2 mt-0.5">
+                          {job.description}
+                        </div>
+                      </div>
+                      <div className="flex flex-row items-center gap-2">
                         <button
-                          onClick={handleSubmit}
-                          className="px-3 py-2 bg-emerald-600 text-white rounded cursor-pointer"
+                          onClick={() => { setSelectedJobId(job.id); loadSelectedJobDetails(job.id) }}
+                          className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-500 cursor-pointer"
                         >
-                          Calculate similarity
+                          Select
+                        </button>
+                        <button
+                          onClick={() => deleteJob(job.id)}
+                          className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 cursor-pointer"
+                        >
+                          Delete
                         </button>
                       </div>
                     </div>
-                  </div>
-                )
-              })()
-            )}
-          </div>
-        </div>
-
-        {/* Right column: jobs list (self-start → aşağı kadar uzamıyor) */}
-        <div className="bg-white p-4 rounded shadow self-start max-h-[600px] overflow-auto">
-          <h2 className="text-lg font-medium mb-2">Your jobs</h2>
-          <ul className="space-y-2">
-            {jobs.map(job => (
-              <li
-                key={job.id}
-                className={`p-2 rounded border ${selectedJobId === job.id ? 'bg-indigo-50 border-indigo-200' : 'bg-gray-50'}`}
-              >
-                <div className="flex flex-col justify-between">
-                  <div className='w-full'>
-                    <div className="font-medium">{job.title}</div>
-                    <div className="text-xs text-slate-600 truncate max-w-xs">{job.description}</div>
-                  </div>
-                  <div className="flex flex-row items-center gap-2 mt-2">
-                    <button
-                      onClick={() => { setSelectedJobId(job.id); loadSelectedJobDetails(job.id) }}
-                      className="px-2 py-1 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-400 cursor-pointer"
-                    >
-                      Select
-                    </button>
-                    <button
-                      onClick={() => deleteJob(job.id)}
-                      className="px-2 py-1 bg-red-50 text-red-600 rounded text-sm hover:bg-red-100 cursor-pointer"
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  </li>
+                ))}
+              </ul>
+              {jobs.length === 0 && (
+                <div className="text-sm text-slate-500 mt-2">
+                  No jobs yet — create one on the left.
                 </div>
-              </li>
-            ))}
-          </ul>
-          {jobs.length === 0 && (
-            <div className="text-sm text-slate-500 mt-2">
-              No jobs yet — create one above.
+              )}
             </div>
+          </section>
+
+          {/* Alt tarafta full-width CV listesi */}
+          {selectedJob && selectedJob.CVs && selectedJob.CVs.length > 0 && (
+            <section className="mt-6 bg-white/90 backdrop-blur border border-slate-100 p-5 rounded-2xl shadow-sm w-full">
+              <h3 className="font-semibold mb-3 text-lg text-slate-900">Uploaded CVs</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full mt-2 text-sm">
+                  <thead>
+                    <tr className="text-left text-slate-500 border-b border-slate-100">
+                      <th className="pb-2">Name</th>
+                      <th className="pb-2">Size</th>
+                      <th className="pb-2">Similarity</th>
+                      <th className="pb-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(selectedJob.CVs || []).map((cv: any, idx: number) => (
+                      <tr
+                        key={cv.id}
+                        className={`border-t border-slate-100 ${
+                          idx % 2 === 0 ? 'bg-slate-50/60' : 'bg-white'
+                        }`}
+                      >
+                        <td className="py-3 pr-4">{cv.originalName || cv.name}</td>
+                        <td className="py-3 pr-4">
+                          {cv.size ? `${(cv.size / 1024).toFixed(1)} KB` : '-'}
+                        </td>
+                        <td className="py-3 pr-4">
+                          {cv.similarity !== undefined && cv.similarity !== null
+                            ? <CircularScore score={cv.similarity} />
+                            : '-'}
+                        </td>
+                        <td className="py-2">
+                          <div className="flex items-center gap-4">
+                            {/* Delete */}
+                            <div onClick={() => deleteCv(cv.id)} title="Delete CV">
+                              <svg xmlns="http://www.w3.org/2000/svg"
+                                className="h-5 w-5 text-slate-500 hover:text-red-600 cursor-pointer transition"
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </div>
+
+                            {/* Download */}
+                            {cv.filePath && (
+                              <div onClick={() => downloadCv(cv.id)} title="Download CV">
+                                <svg xmlns="http://www.w3.org/2000/svg"
+                                  className="h-5 w-5 text-slate-500 hover:text-slate-700 cursor-pointer transition"
+                                  fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                                    d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {role === "seeker" && selectedJob && (
+            <section className="mt-6 bg-white/90 backdrop-blur border border-slate-100 p-5 rounded-2xl shadow-sm w-full">
+              <h3 className="font-semibold mb-3 text-lg text-slate-900">Missing Components</h3>
+
+              {missingKeywords.length === 0 ? (
+                <p className="text-sm text-emerald-600">
+                  There are no important keywords missing for this job posting.
+                </p>
+              ) : (
+                <ul className="list-disc pl-6 text-slate-700 text-sm space-y-1">
+                  {missingKeywords.map((kw: string, i: number) => (
+                    <li key={i}>{kw}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
           )}
         </div>
-      </section>
-
-      {/* Alt tarafta full-width CV listesi */}
-      {selectedJob && selectedJob.CVs && selectedJob.CVs.length > 0 && (
-        <section className="mt-6 bg-white p-4 rounded shadow w-full">
-          <h3 className="font-medium mb-3 text-lg">Uploaded CVs</h3>
-          <table className="w-full mt-2 text-sm">
-            <thead>
-              <tr className="text-left">
-                <th className="pb-2">Name</th>
-                <th className="pb-2">Size</th>
-                <th className="pb-2">Similarity</th>
-                <th className="pb-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(selectedJob.CVs || []).map((cv: any) => (
-                <tr key={cv.id} className="border-t">
-                  <td className="py-3">{cv.originalName || cv.name}</td>
-                  <td className="py-3">
-                    {cv.size ? `${(cv.size / 1024).toFixed(1)} KB` : '-'}
-                  </td>
-                  <td className="py-3">
-                    {cv.similarity !== undefined && cv.similarity !== null
-                      ? <CircularScore score={cv.similarity} />
-                      : '-'}
-                  </td>
-                  <td className="py-2 flex items-center gap-4">
-                    {/* Delete */}
-                    <div onClick={() => deleteCv(cv.id)} title="Delete CV">
-                      <svg xmlns="http://www.w3.org/2000/svg"
-                        className="h-6 w-6 text-gray-500 hover:text-gray-700 cursor-pointer transition"
-                        fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </div>
-
-                    {/* Download */}
-                    {cv.filePath && (
-                      <div onClick={() => downloadCv(cv.id)} title="Download CV">
-                        <svg xmlns="http://www.w3.org/2000/svg"
-                          className="h-6 w-6 text-gray-500 hover:text-gray-700 cursor-pointer transition"
-                          fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
-                        </svg>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
+      </div>
+      <Footer />
     </div>
   )
 }
