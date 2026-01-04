@@ -11,9 +11,14 @@ type Job = {
   title: string
   description: string
   CVs?: Array<any>
-  missingKeywords?: string[]
+  missingKeywords?: MissingKeyword[]
 }
-
+interface MissingKeyword {
+  requirement: string;
+  advice: string;
+  status: string;
+  score: number;
+}
 // Skor için dairesel badge
 function CircularScore({ score }: { score: number }) {
   const percent = Math.round(score * 100)
@@ -69,7 +74,7 @@ export default function DashboardPage() {
   const [newJobTitle, setNewJobTitle] = useState('')
   const [newJobDescription, setNewJobDescription] = useState('')
   const [role, setRole] = useState<string | null>(null)   // 👈 YENİ STATE
-  const [missingKeywords, setMissingKeywords] = useState<string[]>([]);
+  const [missingKeywords, setMissingKeywords] = useState<MissingKeyword[]>([]);
 
 // 1) Profil yükleme
 useEffect(() => {
@@ -191,7 +196,35 @@ useEffect(() => {
       const newList = await fetchJobs() // Taze listeyi al
       await loadSelectedJobDetails(selectedJobId!, newList) // Taze listeyi kullanarak detayı yükle
       const updatedJob = newList.find(j => j.id === selectedJobId);
-      setMissingKeywords(updatedJob?.missingKeywords || []);
+      
+      const rawKeywords = updatedJob?.missingKeywords || [];
+
+      const parseDirtyJson = (str: string) => {
+      try {
+        // 1. Sadece sözlük yapısını belirleyen tırnakları hedefle
+        let validJson = str
+          .replace(/(\w+)'\s*:/g, '"$1":')       // Anahtarları (key) düzelt: 'key': -> "key":
+          .replace(/:\s*'(.*?)'([,}])/g, ': "$1"$2'); // Değerleri (value) düzelt: : 'val' -> : "val"
+
+        // 2. Eğer hala metin içinde tek tırnak kaldıysa (örn: "CV'nizde"), 
+        // yukarıdaki regex onları korumuş olmalı.
+        return JSON.parse(validJson);
+      } catch (e) {
+        // Eğer regex hala kaçırıyorsa, en çirkin ama en çalışan yöntem:
+        // Bu sadece backend çok bozuksa son çaredir.
+        try {
+          return new Function(`return ${str}`)();
+        } catch (finalError) {
+          console.error("Artık bu veriyi kurtaramıyoruz:", finalError);
+          return null;
+        }
+      }
+    };
+
+    // Kullanımı:
+    const parsedKeywords = rawKeywords.map(parseDirtyJson).filter(Boolean);
+    setMissingKeywords(parsedKeywords);
+      console.log("missng : ", updatedJob?.missingKeywords)
       setResults(allResults.map((r: any) => ({ name: r.name, score: r.score, ...(r.error ? { error: r.error } : {}) })))
     } catch (err: any) {
       console.error(err)
@@ -200,28 +233,6 @@ useEffect(() => {
       setLoading(false)
     }
     // Eğer iş arayan ise eksik kelimeleri de çek
-    if (role === "seeker") {
-      const cvList = selectedJob?.CVs;
-      if (cvList && cvList.length > 0) {
-        const firstCv = cvList[0];
-
-        // 1) Missing keywords’i backend’e kaydet
-        const missing = await fetchMissingKeywords(
-          firstCv.id,
-          selectedJob!.id,
-          selectedJob!.description
-        );
-
-        // 2) Frontend state’e yaz
-        setMissingKeywords(missing);
-
-        // 3) Backend artık güncel → yeni jobs listesini çek
-        const refreshedJobs = await fetchJobs();
-
-        // 4) Bu güncel listeyle selected job detaylarını yeniden yükle
-        await loadSelectedJobDetails(selectedJob!.id, refreshedJobs);
-      }
-    }
   }
 
   // Fetch all jobs of authenticated employer
@@ -629,21 +640,64 @@ useEffect(() => {
           )}
 
           {role === "seeker" && selectedJob && (
-            <section className="mt-6 bg-white/90 backdrop-blur border border-slate-100 p-5 rounded-2xl shadow-sm w-full">
-              <h3 className="font-semibold mb-3 text-lg text-slate-900">Missing Components</h3>
+            <div className="p-6 space-y-6 bg-white">
+    {missingKeywords.length === 0 ? (
+      <div className="text-center py-10">
+        <span className="text-4xl">✅</span>
+        <p className="text-emerald-600 font-semibold mt-2">Mükemmel! Eksik bileşen bulunamadı.</p>
+      </div>
+    ) : (
+      missingKeywords.map((kw, i) => {
+        // Python'daki mantığı değişkenlere atayalım
+        const isCritical = kw.status === "EKSİK";
+        const emoji = isCritical ? "❌" : "⚠️";
+        const prefix = isCritical ? "KRİTİK EKSİK" : "GELİŞTİRİLMELİ";
+        const bgColor = isCritical ? "bg-red-50" : "bg-amber-50";
+        const borderColor = isCritical ? "border-red-200" : "border-amber-200";
+        const textColor = isCritical ? "text-red-700" : "text-amber-700";
 
-              {missingKeywords.length === 0 ? (
-                <p className="text-sm text-emerald-600">
-                  There are no important keywords missing for this job posting.
-                </p>
-              ) : (
-                <ul className="list-disc pl-6 text-slate-700 text-sm space-y-1">
-                  {missingKeywords.map((kw: string, i: number) => (
-                    <li key={i}>{kw}</li>
-                  ))}
-                </ul>
-              )}
-            </section>
+        return (
+          <div 
+            key={i} 
+            className={`p-5 border-l-4 ${borderColor} ${bgColor} rounded-r-xl transition-all hover:shadow-sm`}
+          >
+            {/* Başlık ve Durum */}
+            <div className="flex items-start gap-3">
+              <span className="text-xl">{emoji}</span>
+              <div>
+                <h4 className={`font-bold ${textColor} text-sm uppercase tracking-tight`}>
+                  {prefix}: {kw.requirement}
+                </h4>
+                
+                {/* Tavsiye Kısmı (💡 TAVSİYE) */}
+                <div className="mt-3 flex gap-2 text-slate-700">
+                  <span className="flex-shrink-0">💡</span>
+                  <p className="text-sm leading-relaxed italic">
+                    <span className="font-semibold not-italic">TAVSİYE:</span> {kw.advice}
+                  </p>
+                </div>
+
+                {/* Eşleşme Gücü (📊 Eşleşme Gücü) */}
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="text-xs">📊</span>
+                  <span className="text-xs font-bold text-slate-500 uppercase">Eşleşme Gücü:</span>
+                  <div className="flex-1 h-2 w-32 bg-slate-200 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full ${isCritical ? 'bg-red-500' : 'bg-amber-500'}`} 
+                      style={{ width: `${(kw.score * 100)}%` }}
+                    />
+                  </div>
+                  <span className={`text-xs font-mono font-bold ${textColor}`}>
+                    %{(kw.score * 100).toFixed(1)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })
+    )}
+  </div>
           )}
         </div>
       </div>
