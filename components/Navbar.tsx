@@ -31,16 +31,7 @@ export default function Navbar() {
           onClick={() => router.push("/")}
         >
           <div className="h-9 w-9 rounded-xl bg-indigo-100 flex items-center justify-center">
-            <svg
-              className="h-6 w-6 text-indigo-600"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.8}
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 19a8 8 0 0116 0" />
-            </svg>
+            <img src="/icon.jpeg" alt="" />
           </div>
           <span className="text-lg font-semibold text-slate-800 tracking-tight">
             MatcHire
