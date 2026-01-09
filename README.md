@@ -1,36 +1,86 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 💻 matcHire Frontend
 
-## Getting Started
+**matcHire** ekosisteminin kullanıcı arayüzüdür. İşverenlerin ilan oluşturup CV analizlerini yönettiği, adayların ise profillerini düzenleyip eksik yetkinlik tavsiyelerini görüntülediği modern web uygulamasıdır.
 
-First, run the development server:
+![Next.js](https://img.shields.io/badge/Next.js-14-black)
+![React](https://img.shields.io/badge/React-18-blue)
+![Tailwind CSS](https://img.shields.io/badge/Style-Tailwind_CSS-38bdf8)
+![TypeScript](https://img.shields.io/badge/Lang-TypeScript-blue)
+
+## 🎨 Temel Özellikler
+
+- **⚡ Modern Mimari:** Next.js 14 **App Router** yapısı ile hızlı ve SEO dostu sayfalar.
+- **📱 Responsive & Glassmorphism Tasarım:** Mobil uyumlu, arka plan bulanıklık efektleri (backdrop-blur) ile zenginleştirilmiş modern UI.
+- **📊 Görsel Analizler:**
+  - CV uyumluluk oranlarını gösteren renk kodlu dairesel grafikler.
+  - "Kritik Eksik" ve "Geliştirilmeli" uyarıları için özelleştirilmiş bilgi kartları.
+- **🔄 Dinamik Etkileşim:**
+  - Anlık dosya yükleme (Upload) durumları.
+  - İş ilanı oluşturma ve anında listeleme.
+- **🔒 Güvenlik:**
+  - Token tabanlı (JWT) korumalı rotalar ve oturum yönetimi.
+  - Hatalı girişlerde kullanıcı dostu bildirimler.
+
+## 📂 Proje Yapısı
+
+```text
+matcHire_frontend/
+├── app/
+│   ├── login/       # Giriş Sayfası
+│   ├── register/    # Kayıt Sayfası
+│   ├── dashboard/   # Ana Panel (İşveren/Aday)
+|   ├── components/  # # Sayfa içi bileşenler
+│   ├── account/     # Profil Ayarları
+│   ├── global.css   # Global stiller
+│   └── layout.tsx   # Ana iskelet ve font ayarları
+├── components/      # Navbar, Footer, Spinner vb.
+├── public/          # Görseller (icon, wallpaper)
+├── .env             # Çevre değişkenleri
+└──
+```
+
+## 🛠️ Kurulum ve Çalıştırma
+
+Projeyi yerel ortamınızda çalıştırmak için aşağıdaki adımları izleyin.
+
+### 1️⃣ Repoyu Klonlayın
+
+```bash
+git clone https://github.com/Jessitoii/matcHire_frontend.git
+cd matcHire_frontend
+```
+
+### 2️⃣ Bağımlılıkları Yükleyin
+
+```bash
+npm install
+```
+
+### 3️⃣ Çevre Değişkenlerini Ayarlayın (.env.local)
+
+Frontend'in Backend ile konuşabilmesi için ana dizinde .env adında bir dosya oluşturun ve şu satırı ekleyin:
+
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:5000
+```
+
+### 4️⃣ Uygulamayı Başlatın
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+#### 🔗 İlgili Repolar
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Tam çalışan bir sistem için aşağıdaki servislerin de ayakta olması gerekir:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+💻 Backend: [matchire_backend](https://github.com/tolgadirek/matcHire_backend)
 
-## Learn More
+🧠 AI Service: [matchire_ai](https://github.com/tolgadirek/matcHire_ai)
 
-To learn more about Next.js, take a look at the following resources:
+## 👥 Ekip Üyeleri
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| İsim Soyisim       | GitHub Profili                                 |
+| :----------------- | :--------------------------------------------- |
+| **Tolga Direk**    | [@tolgadirek](https://github.com/tolgadirek)   |
+| **Alper Can Özer** | [@LoverVeysel](https://github.com/LoverVeysel) |

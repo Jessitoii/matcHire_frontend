@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function RegisterPage() {
   const [firstName, setFirstName] = useState('')
@@ -14,6 +15,9 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+
+  // API URL'ini env'den al, yoksa localhost kullan
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -34,7 +38,7 @@ export default function RegisterPage() {
         payload.companyName = companyName
       }
 
-      const res = await fetch('http://localhost:5000/api/auth/register', {
+      const res = await fetch(`${API_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -42,9 +46,16 @@ export default function RegisterPage() {
 
       if (!res.ok) {
         const text = await res.text()
-        throw new Error(text || 'Registration failed')
+        // Gelen hata mesajı JSON ise parse etmeye çalış, değilse text olarak al
+        try {
+            const jsonError = JSON.parse(text);
+            throw new Error(jsonError.message || 'Registration failed');
+        } catch {
+            throw new Error(text || 'Registration failed');
+        }
       }
 
+      // Kayıt başarılıysa login sayfasına yönlendir
       router.replace('/login')
     } catch (err: any) {
       setError(err.message || 'Unknown error')
@@ -54,8 +65,8 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white/90 flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-white/50 flex items-center justify-center px-4">
+      <div className="w-full max-w-md my-10"> {/* my-10 mobilde sıkışmayı önler */}
         <div className="bg-white/90 backdrop-blur-xl border border-slate-100 shadow-xl rounded-2xl p-8">
           <div className="flex items-center gap-3 mb-2">
             <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center">
@@ -89,10 +100,14 @@ export default function RegisterPage() {
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+                <label 
+                  htmlFor="firstName"
+                  className="block text-xs font-medium text-slate-600 uppercase tracking-wide"
+                >
                   First Name
                 </label>
                 <input
+                  id="firstName"
                   value={firstName}
                   onChange={e => setFirstName(e.target.value)}
                   className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -102,10 +117,14 @@ export default function RegisterPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+                <label 
+                  htmlFor="lastName"
+                  className="block text-xs font-medium text-slate-600 uppercase tracking-wide"
+                >
                   Last Name
                 </label>
                 <input
+                  id="lastName"
                   value={lastName}
                   onChange={e => setLastName(e.target.value)}
                   className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -116,10 +135,14 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+              <label 
+                htmlFor="role"
+                className="block text-xs font-medium text-slate-600 uppercase tracking-wide"
+              >
                 Role
               </label>
               <select
+                id="role"
                 value={role}
                 onChange={e => setRole(e.target.value as "seeker" | "employer")}
                 className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -132,10 +155,14 @@ export default function RegisterPage() {
 
             {role === "employer" && (
               <div>
-                <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+                <label 
+                  htmlFor="companyName"
+                  className="block text-xs font-medium text-slate-600 uppercase tracking-wide"
+                >
                   Company Name
                 </label>
                 <input
+                  id="companyName"
                   value={companyName}
                   onChange={e => setCompanyName(e.target.value)}
                   className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -146,10 +173,14 @@ export default function RegisterPage() {
             )}
 
             <div>
-              <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+              <label 
+                htmlFor="email"
+                className="block text-xs font-medium text-slate-600 uppercase tracking-wide"
+              >
                 Email
               </label>
               <input
+                id="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -159,10 +190,14 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+              <label 
+                htmlFor="password"
+                className="block text-xs font-medium text-slate-600 uppercase tracking-wide"
+              >
                 Password
               </label>
               <input
+                id="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -185,12 +220,12 @@ export default function RegisterPage() {
                 {loading ? 'Creating...' : 'Create account'}
               </button>
 
-              <a
-                className="text-sm text-indigo-600 hover:text-indigo-700 hover:underline"
+              <Link
                 href="/login"
+                className="text-sm text-indigo-600 hover:text-indigo-700 hover:underline"
               >
                 Already have an account?
-              </a>
+              </Link>
             </div>
           </form>
         </div>

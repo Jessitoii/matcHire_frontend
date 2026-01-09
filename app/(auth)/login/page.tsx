@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link' // <a> yerine Link kullanımı için
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -10,13 +11,16 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
+  // API URL'ini env'den al, yoksa localhost kullan
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/login', {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -24,11 +28,17 @@ export default function LoginPage() {
 
       if (!res.ok) {
         const text = await res.text()
-        throw new Error(text || 'Login failed')
+        // Gelen hata mesajı JSON ise parse etmeye çalış, değilse text olarak al
+        try {
+            const jsonError = JSON.parse(text);
+            throw new Error(jsonError.message || 'Login failed');
+        } catch {
+            throw new Error(text || 'Login failed');
+        }
       }
 
       const data = await res.json()
-      // Expecting { token }
+      
       if (data.token) {
         localStorage.setItem('token', data.token)
         router.replace('/dashboard')
@@ -43,7 +53,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white/90 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-white/50 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="bg-white/90 backdrop-blur-xl border border-slate-100 shadow-xl rounded-2xl p-8">
           <div className="flex items-center gap-3 mb-2">
@@ -77,10 +87,14 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+              <label 
+                htmlFor="email"
+                className="block text-xs font-medium text-slate-600 uppercase tracking-wide"
+              >
                 Email
               </label>
               <input
+                id="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -90,10 +104,14 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-600 uppercase tracking-wide">
+              <label 
+                htmlFor="password"
+                className="block text-xs font-medium text-slate-600 uppercase tracking-wide"
+              >
                 Password
               </label>
               <input
+                id="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -115,12 +133,13 @@ export default function LoginPage() {
               >
                 {loading ? 'Signing in...' : 'Sign in'}
               </button>
-              <a
-                className="text-sm text-indigo-600 hover:text-indigo-700 hover:underline"
+              
+              <Link
                 href="/register"
+                className="text-sm text-indigo-600 hover:text-indigo-700 hover:underline"
               >
                 Create an account
-              </a>
+              </Link>
             </div>
           </form>
         </div>

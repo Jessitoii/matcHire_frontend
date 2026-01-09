@@ -289,15 +289,28 @@ useEffect(() => {
       // Skora göre sırala (yüksekten düşüğe)
       cvsList.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0))
 
+      // --- EKLENEN KISIM BAŞLANGIÇ ---
+      // Veritabanından gelen keywords verisi string (Python dict formatı) olabilir.
+      // Bunları parseDirtyJson ile temizleyip objeye çeviriyoruz.
+      let cleanedKeywords: MissingKeyword[] = [];
+      if (basic?.missingKeywords && Array.isArray(basic.missingKeywords)) {
+        cleanedKeywords = basic.missingKeywords
+          .map((item: any) => parseDirtyJson(item))
+          .filter((item: any) => item !== null) as MissingKeyword[];
+      }
+      // --- EKLENEN KISIM BİTİŞ ---
+
       const merged: Job = {
         id: jobId,
         title: basic?.title || ((cvData && (cvData as any).jobTitle) || ''),
         description: basic?.description || ((cvData && (cvData as any).jobDescription) || ''),
         CVs: cvsList,
-        missingKeywords: basic?.missingKeywords || []
+        missingKeywords: cleanedKeywords // Düzenlenmiş veriyi kullanıyoruz
       }
+      
       setSelectedJob(merged)
-      setMissingKeywords(merged.missingKeywords || []);
+      setMissingKeywords(cleanedKeywords); // State'i temiz veriyle güncelliyoruz
+      
     } catch (err) {
       console.error('Failed to load selected job details', err)
       setSelectedJob(null)
@@ -318,10 +331,35 @@ useEffect(() => {
         },
         body: JSON.stringify({ title: newJobTitle, description: newJobDescription })
       })
+      
       if (!res.ok) throw new Error(await res.text())
-      await fetchJobs()
+      
+      // 1. Backend'den dönen yeni job verisini alalım
+      const data = await res.json()
+      const newJob = data.job
+
+      // 2. Listeyi yenile (Sağ taraftaki liste güncellensin)
+      await fetchJobs() 
+
+      // 3. Form inputlarını temizle
       setNewJobTitle('')
       setNewJobDescription('')
+      
+      // 4. --- KRİTİK KISIM: Yeni oluşturulan işi "Seçili" hale getir ---
+      setSelectedJobId(newJob.id)
+      
+      setSelectedJob({
+        id: newJob.id,
+        title: newJob.title,
+        description: newJob.description,
+        CVs: [],             // Yeni iş olduğu için henüz CV yok
+        missingKeywords: []  // Yeni iş olduğu için henüz analiz yok
+      })
+
+      // 5. Eski analiz sonuçlarını temizle (yeni bir sayfa açıyoruz gibi)
+      setResults(null)
+      setMissingKeywords([])
+
     } catch (err) {
       console.error('Create job failed', err)
     } finally {
@@ -390,17 +428,23 @@ useEffect(() => {
     }
   }
 
-  async function downloadCv(cvId: string) {
+  async function downloadCv(cvId: string, fileName: string) {
     try {
       const token = localStorage.getItem('token')
       const res = await fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000') + '/api/cv/download?cvId=' + encodeURIComponent(cvId), {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined
       })
       if (!res.ok) throw new Error(await res.text())
+      
       const blob = await res.blob()
       const url = window.URL.createObjectURL(blob)
+      
+      // Link oluşturma
       const a = document.createElement('a')
       a.href = url
+      // İndirilen dosyaya orijinal ismini veriyoruz
+      a.download = fileName || "download.pdf" 
+      
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -438,7 +482,7 @@ useEffect(() => {
 
   return (
     <div>
-      <div className="min-h-screen bg-white/90">
+      <div className="min-h-screen bg-white/50">
         <div className="w-full fixed top-0 left-0 z-50">
           <Navbar />
         </div>
@@ -636,9 +680,12 @@ useEffect(() => {
                               </svg>
                             </div>
 
-                            {/* Download */}
+                            {/* Download Icon Button */}
                             {cv.filePath && (
-                              <div onClick={() => downloadCv(cv.id)} title="Download CV">
+                              <div 
+                                onClick={() => downloadCv(cv.id, cv.originalName || cv.name)} // <-- fileName'i buraya ekledik
+                                title="Download CV"
+                              >
                                 <svg xmlns="http://www.w3.org/2000/svg"
                                   className="h-5 w-5 text-slate-500 hover:text-slate-700 cursor-pointer transition"
                                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -659,63 +706,63 @@ useEffect(() => {
 
           {role === "seeker" && selectedJob && (
             <div className="p-6 space-y-6 bg-white">
-    {missingKeywords.length === 0 ? (
-      <div className="text-center py-10">
-        <span className="text-4xl">✅</span>
-        <p className="text-emerald-600 font-semibold mt-2">Mükemmel! Eksik bileşen bulunamadı.</p>
-      </div>
-    ) : (
-      missingKeywords.map((kw, i) => {
-        // Python'daki mantığı değişkenlere atayalım
-        const isCritical = kw.status === "EKSİK";
-        const emoji = isCritical ? "❌" : "⚠️";
-        const prefix = isCritical ? "KRİTİK EKSİK" : "GELİŞTİRİLMELİ";
-        const bgColor = isCritical ? "bg-red-50" : "bg-amber-50";
-        const borderColor = isCritical ? "border-red-200" : "border-amber-200";
-        const textColor = isCritical ? "text-red-700" : "text-amber-700";
-
-        return (
-          <div 
-            key={i} 
-            className={`p-5 border-l-4 ${borderColor} ${bgColor} rounded-r-xl transition-all hover:shadow-sm`}
-          >
-            {/* Başlık ve Durum */}
-            <div className="flex items-start gap-3">
-              <span className="text-xl">{emoji}</span>
-              <div>
-                <h4 className={`font-bold ${textColor} text-sm uppercase tracking-tight`}>
-                  {prefix}: {kw.requirement}
-                </h4>
-                
-                {/* Tavsiye Kısmı (💡 TAVSİYE) */}
-                <div className="mt-3 flex gap-2 text-slate-700">
-                  <span className="flex-shrink-0">💡</span>
-                  <p className="text-sm leading-relaxed italic">
-                    <span className="font-semibold not-italic">TAVSİYE:</span> {kw.advice}
-                  </p>
+              {missingKeywords.length === 0 ? (
+                <div className="text-center py-10">
+                  <span className="text-4xl">✅</span>
+                  <p className="text-emerald-600 font-semibold mt-2">Mükemmel! Eksik bileşen bulunamadı.</p>
                 </div>
+              ) : (
+                missingKeywords.map((kw, i) => {
+                  // Python'daki mantığı değişkenlere atayalım
+                  const isCritical = kw.status === "EKSİK";
+                  const emoji = isCritical ? "❌" : "⚠️";
+                  const prefix = isCritical ? "KRİTİK EKSİK" : "GELİŞTİRİLMELİ";
+                  const bgColor = isCritical ? "bg-red-50" : "bg-amber-50";
+                  const borderColor = isCritical ? "border-red-200" : "border-amber-200";
+                  const textColor = isCritical ? "text-red-700" : "text-amber-700";
 
-                {/* Eşleşme Gücü (📊 Eşleşme Gücü) */}
-                <div className="mt-3 flex items-center gap-2">
-                  <span className="text-xs">📊</span>
-                  <span className="text-xs font-bold text-slate-500 uppercase">Eşleşme Gücü:</span>
-                  <div className="flex-1 h-2 w-32 bg-slate-200 rounded-full overflow-hidden">
+                  return (
                     <div 
-                      className={`h-full ${isCritical ? 'bg-red-500' : 'bg-amber-500'}`} 
-                      style={{ width: `${(kw.score * 100)}%` }}
-                    />
-                  </div>
-                  <span className={`text-xs font-mono font-bold ${textColor}`}>
-                    %{(kw.score * 100).toFixed(1)}
-                  </span>
-                </div>
-              </div>
+                      key={i} 
+                      className={`p-5 border-l-4 ${borderColor} ${bgColor} rounded-r-xl transition-all hover:shadow-sm`}
+                    >
+                      {/* Başlık ve Durum */}
+                      <div className="flex items-start gap-3">
+                        <span className="text-xl">{emoji}</span>
+                        <div>
+                          <h4 className={`font-bold ${textColor} text-sm uppercase tracking-tight`}>
+                            {prefix}: {kw.requirement}
+                          </h4>
+                          
+                          {/* Tavsiye Kısmı (💡 TAVSİYE) */}
+                          <div className="mt-3 flex gap-2 text-slate-700">
+                            <span className="flex-shrink-0">💡</span>
+                            <p className="text-sm leading-relaxed italic">
+                              <span className="font-semibold not-italic">TAVSİYE:</span> {kw.advice}
+                            </p>
+                          </div>
+
+                          {/* Eşleşme Gücü (📊 Eşleşme Gücü) */}
+                          <div className="mt-3 flex items-center gap-2">
+                            <span className="text-xs">📊</span>
+                            <span className="text-xs font-bold text-slate-500 uppercase">Eşleşme Gücü:</span>
+                            <div className="flex-1 h-2 w-32 bg-slate-200 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full ${isCritical ? 'bg-red-500' : 'bg-amber-500'}`} 
+                                style={{ width: `${(kw.score * 100)}%` }}
+                              />
+                            </div>
+                            <span className={`text-xs font-mono font-bold ${textColor}`}>
+                              %{(kw.score * 100).toFixed(1)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
-          </div>
-        );
-      })
-    )}
-  </div>
           )}
         </div>
       </div>
