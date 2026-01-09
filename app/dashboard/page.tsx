@@ -114,7 +114,27 @@ useEffect(() => {
   if (!role) return;
   fetchJobs();
 }, [role]);
+  const parseDirtyJson = (str: any): MissingKeyword | null => {
+            try {
+              if (typeof str === 'object' && str !== null) return str;
+              if (typeof str !== 'string') return null;
 
+              // Python sözlüğünü JSON formatına yaklaştıran temizlik
+              let cleaned = str
+                .replace(/'/g, '"') // Tek tırnakları çift tırnağa çevir
+                .replace(/\\n/g, ' '); // Kaçış karakterli alt satırları temizle
+
+              return JSON.parse(cleaned);
+            } catch (e) {
+              // Eğer JSON.parse patlarsa (içerikte "can't" gibi tırnaklar varsa) son çare:
+              try {
+                return new Function(`return ${str}`)();
+              } catch (finalError) {
+                console.error("Veri parse edilemedi:", str);
+                return null;
+              }
+            }
+          };
   async function handleSubmit() {
     setLoading(true)
     setResults(null)
@@ -200,47 +220,28 @@ useEffect(() => {
       
       // Eğer seeker ise missing keywords'leri çek
       if (role === 'seeker' && selectedJobId && updatedJob) {
+        // 1. Önce CV listesini al
         const cvs = updatedJob.CVs || [];
-        if (cvs.length > 0) {
-          // İlk CV için keywords çek
-          const firstCv = cvs[0];
-          const keywords = await fetchMissingKeywords(firstCv.id, selectedJobId, jobText);
-          setMissingKeywords(keywords);
-          console.log("Missing keywords fetched:", keywords);
-          const rawKeywords = (updatedJob?.missingKeywords || []) as any[];
         
-        const parseDirtyJson = (str: any) => {
-          try {
-            // If already an object, return as-is
-            if (typeof str === 'object' && str !== null) {
-              return str as MissingKeyword;
-            }
-            
-            // 1. Sadece sözlük yapısını belirleyen tırnakları hedefle
-            let validJson = str
-              .replace(/(\w+)'\s*:/g, '"$1":')       // Anahtarları (key) düzelt: 'key': -> "key":
-              .replace(/:\s*'(.*?)'([,}])/g, ': "$1"$2'); // Değerleri (value) düzelt: : 'val' -> : "val"
+        // 2. Eğer CV listesi boş değilse ilkini seç
+        if (cvs.length > 0) {
+          const firstCv = cvs[0]; // <--- DEĞİŞKENİ BURADA TANIMLIYORUZ
+          const jobText = selectedJob?.description || '';
 
-            // 2. Eğer hala metin içinde tek tırnak kaldıysa (örn: "CV'nizde"), 
-            // yukarıdaki regex onları korumuş olmalı.
-            return JSON.parse(validJson) as MissingKeyword;
-          } catch (e) {
-            // Eğer regex hala kaçırıyorsa, en çirkin ama en çalışan yöntem:
-            // Bu sadece backend çok bozuksa son çaredir.
-            try {
-              return new Function(`return ${str}`)() as MissingKeyword;
-            } catch (finalError) {
-              console.error("Artık bu veriyi kurtaramıyoruz:", finalError);
-              return null;
-            }
-          }
-        };
+          // 3. Şimdi değişkeni kullanabilirsin
+          const rawKeywordsArray = await fetchMissingKeywords(firstCv.id, selectedJobId, jobText);
+          console.log("Raw keywords from API:", rawKeywordsArray);
 
-        const parsedKeywords = rawKeywords.map(parseDirtyJson).filter(Boolean) as MissingKeyword[];
-        setMissingKeywords(parsedKeywords);
-        console.log("Parsed missing keywords:", parsedKeywords);
+          // 4. Kirli veriyi temizle ve state'e bas
+          const parsed = rawKeywordsArray
+            .map((item: any) => parseDirtyJson(item))
+            .filter((item: any) => item !== null);
+
+          setMissingKeywords(parsed);
+        } else {
+          console.warn("Seçili iş için yüklenmiş CV bulunamadı.");
         }
-      } 
+      }
       
       setResults(allResults.map((r: any) => ({ name: r.name, score: r.score, ...(r.error ? { error: r.error } : {}) })))
     } catch (err: any) {
