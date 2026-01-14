@@ -148,8 +148,8 @@ useEffect(() => {
         return
       }
 
-      const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
-      const endpoint = base + '/similarity/'
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const endpoint = `${apiBase}/api/similarity/`;
       const token = localStorage.getItem('token')
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
